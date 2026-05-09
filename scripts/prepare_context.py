@@ -142,7 +142,9 @@ def attach_peer_stats(songs: list[dict], rating: int, peer_stats: dict | None) -
         if peer_avg:
             gap = round(safe_float(song.get("achievement")) - peer_avg, 4)
             song["peer_avg"] = round(peer_avg, 4)
+            song["avg_achievement"] = round(peer_avg, 4)
             song["gap"] = gap
+            song["gap_vs_peer"] = gap
             song["peer_sample_count"] = safe_int(stat.get("sample_count"), 0)
             gaps.append(gap)
         appear = stat.get("b50_appear_rate")
@@ -172,10 +174,210 @@ def compact_song(song: dict) -> dict:
     keys = [
         "bucket", "music_id", "title", "type", "level", "level_index", "level_label",
         "ds", "achievement", "ra", "rate", "fc_label", "dx_score", "peer_avg",
-        "gap", "overlap", "peer_sample_count", "config_tags", "community_vibe",
+        "avg_achievement", "gap", "gap_vs_peer", "overlap", "peer_sample_count", "config_tags", "community_vibe",
         "chart_identity", "difficulty_feel", "rating_gap_insight",
     ]
     return {k: song.get(k) for k in keys if song.get(k) not in (None, "", [])}
+
+
+def fine_rating_segment(rating: int) -> dict:
+    if rating >= 16500:
+        return {
+            "label": "16500+ 顶级门槛段",
+            "range": "16500+",
+            "tone": "按顶段尺度评价，不要按普通 w6 轻描淡写。",
+        }
+    if rating >= 15000:
+        start = (rating // 200) * 200
+        return {
+            "label": f"{start}-{start + 199} 细分段",
+            "range": f"{start}-{start + 199}",
+            "tone": "按 200 分细分段评价，不要只粗暴说 w5/w6。",
+        }
+    if rating >= 13500:
+        start = (rating // 200) * 200
+        return {
+            "label": f"{start}-{start + 199} 上升段",
+            "range": f"{start}-{start + 199}",
+            "tone": "按 200 分细分段评价，重点看基本盘和推分空间。",
+        }
+    return {"label": "入门-进阶段", "range": "<13500", "tone": "以基础能力和推分空间为主。"}
+
+
+def ds_class(ds: float) -> str:
+    if ds >= 14.6:
+        return "14+"
+    if ds >= 14.0:
+        return "14"
+    if ds >= 13.6:
+        return "13+"
+    if ds >= 13.0:
+        return "13"
+    return "<13"
+
+
+def gap_tier(gap: float | None) -> str:
+    if gap is None:
+        return ""
+    if gap > 0.8:
+        return "异常领先"
+    if gap >= 0.5:
+        return "明显领先"
+    if gap < -0.8:
+        return "异常落后"
+    if gap <= -0.5:
+        return "明显落后"
+    return ""
+
+
+def song_evidence_row(song: dict, rank: int) -> dict:
+    gap = song.get("gap_vs_peer", song.get("gap"))
+    avg_achievement = song.get("avg_achievement", song.get("peer_avg"))
+    ds = safe_float(song.get("ds"), 0.0)
+    achievement = safe_float(song.get("achievement"), 0.0)
+    fc_label = str(song.get("fc_label") or "")
+    row = {
+        "rank": rank,
+        "music_id": str(song.get("music_id") or ""),
+        "title": str(song.get("title") or ""),
+        "bucket": song.get("bucket"),
+        "chart_type": song.get("type"),
+        "level_label": song.get("level_label"),
+        "ds": ds,
+        "ds_class": ds_class(ds),
+        "achievement": round(achievement, 4),
+        "avg_achievement": round(safe_float(avg_achievement), 4) if avg_achievement is not None else None,
+        "peer_avg": round(safe_float(avg_achievement), 4) if avg_achievement is not None else None,
+        "gap_vs_peer": round(safe_float(gap), 4) if gap is not None else None,
+        "gap": round(safe_float(gap), 4) if gap is not None else None,
+        "gap_tier": gap_tier(safe_float(gap)) if gap is not None else "",
+        "song_rating": safe_int(song.get("ra"), 0),
+        "pc": safe_int(song.get("play_count", song.get("playCount")), 0),
+        "overlap": song.get("overlap"),
+        "peer_sample_count": song.get("peer_sample_count"),
+        "fc_label": fc_label,
+        "is_ap": fc_label in {"AP", "AP+"},
+        "is_theory": achievement >= 101.0,
+        "is_ap_target_reasonable": achievement >= 100.8,
+        "config": (song.get("config_tags") or [])[:5],
+        "community_vibe": song.get("community_vibe"),
+        "chart_identity": song.get("chart_identity"),
+    }
+    return {k: v for k, v in row.items() if v not in (None, "", [])}
+
+
+def unique_rows(rows: list[dict], limit: int) -> list[dict]:
+    seen: set[tuple[str, str]] = set()
+    result = []
+    for row in rows:
+        key = (str(row.get("music_id") or ""), str(row.get("level_label") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(row)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def evidence_section_summary(rows: list[dict], label: str) -> dict:
+    gaps = [safe_float(r.get("gap_vs_peer")) for r in rows if r.get("gap_vs_peer") is not None]
+    peer_avgs = [safe_float(r.get("avg_achievement")) for r in rows if r.get("avg_achievement") is not None]
+    pcs = [safe_int(r.get("pc"), 0) for r in rows if safe_int(r.get("pc"), 0) > 0]
+    by_rating_desc = sorted(rows, key=lambda r: safe_int(r.get("song_rating"), 0), reverse=True)
+    by_rating_asc = sorted(rows, key=lambda r: safe_int(r.get("song_rating"), 0))
+    by_gap = sorted([r for r in rows if r.get("gap_vs_peer") is not None], key=lambda r: safe_float(r.get("gap_vs_peer")), reverse=True)
+    return {
+        "label": label,
+        "count": len(rows),
+        "role": "旧版本/历史 best 35，看基本盘、下限和长期结构" if label == "B35" else "当前版本/new best 15，看新版本适应、上限突破和近期推分效率",
+        "avg_ds": avg([safe_float(r.get("ds")) for r in rows if safe_float(r.get("ds")) > 0]),
+        "avg_achievement": avg([safe_float(r.get("achievement")) for r in rows if safe_float(r.get("achievement")) > 0]),
+        "avg_peer_achievement": avg(peer_avgs),
+        "avg_gap_vs_peer": avg(gaps),
+        "avg_song_rating": avg([safe_float(r.get("song_rating")) for r in rows if safe_float(r.get("song_rating")) > 0]),
+        "pc_avg": round(sum(pcs) / len(pcs), 1) if pcs else 0,
+        "top_cards": by_rating_desc[:5],
+        "floor_cards": by_rating_asc[:5],
+        "best_peer_gaps": by_gap[:4],
+        "worst_peer_gaps": list(reversed(by_gap[-4:])),
+    }
+
+
+def build_b50_evidence_pack(songs: list[dict], rating: int, peer: dict) -> dict:
+    rows = [song_evidence_row(song, idx + 1) for idx, song in enumerate(songs)]
+    rows_by_rating = sorted(rows, key=lambda r: safe_int(r.get("song_rating"), 0), reverse=True)
+    rows_with_gap = sorted(
+        [r for r in rows if r.get("gap_vs_peer") is not None],
+        key=lambda r: safe_float(r.get("gap_vs_peer")),
+        reverse=True,
+    )
+    b35 = [r for r in rows if r.get("bucket") == "B35"]
+    b15 = [r for r in rows if r.get("bucket") == "B15"]
+
+    ds_bands: dict[str, list[dict]] = {}
+    for row in rows:
+        ds_bands.setdefault(str(row.get("ds_class") or "<13"), []).append(row)
+    ds_summary = {
+        band: {
+            "count": len(items),
+            "avg_achievement": avg([safe_float(x.get("achievement")) for x in items if safe_float(x.get("achievement")) > 0]),
+            "avg_peer_achievement": avg([safe_float(x.get("avg_achievement")) for x in items if x.get("avg_achievement") is not None]),
+            "avg_gap_vs_peer": avg([safe_float(x.get("gap_vs_peer")) for x in items if x.get("gap_vs_peer") is not None]),
+            "avg_song_rating": avg([safe_float(x.get("song_rating")) for x in items if safe_float(x.get("song_rating")) > 0]),
+        }
+        for band, items in ds_bands.items()
+    }
+
+    strongest = rows_with_gap[:8]
+    weakest = list(reversed(rows_with_gap[-8:]))
+    entry_points = unique_rows(strongest[:6] + weakest[:6], 10)
+    selected = unique_rows(strongest[:4] + weakest[:4] + rows_by_rating[:4], 10)
+    overlap = peer.get("b50_overlap") or {}
+    return {
+        "peer_comparison": {
+            "available": bool(peer.get("available")),
+            "rating_bucket": peer.get("bucket"),
+            "matched": peer.get("matched", 0),
+            "ARPI": peer.get("arpi"),
+            "b50_overlap": overlap,
+            "rule": "peer_avg/avg_achievement 是同 rating 桶玩家在同一谱同一难度的平均达成率；gap_vs_peer=当前达成率-avg_achievement；ARPI 是所有可匹配 B50 谱面的平均 gap。",
+            "write_requirement": "available=true 且 matched>0 时，最终分析必须自然提到 ARPI，并至少用 2-3 张谱的 avg_achievement/gap_vs_peer 做强弱判断。",
+        },
+        "rating_split": {
+            "total": rating,
+            "fine_segment": fine_rating_segment(rating),
+            "b35_ra": sum(safe_int(r.get("song_rating"), 0) for r in b35),
+            "b15_ra": sum(safe_int(r.get("song_rating"), 0) for r in b15),
+            "top10_avg_song_rating": avg([safe_float(r.get("song_rating")) for r in rows_by_rating[:10]]),
+            "bottom10_avg_song_rating": avg([safe_float(r.get("song_rating")) for r in sorted(rows, key=lambda r: safe_int(r.get("song_rating"), 0))[:10]]),
+        },
+        "b35_b15_structure": {
+            "b35": evidence_section_summary(b35, "B35"),
+            "b15": evidence_section_summary(b15, "B15"),
+        },
+        "ds_band_summary": ds_summary,
+        "same_rating_average_entry_points": entry_points,
+        "selected_evidence": selected,
+        "strongest_vs_peer": strongest,
+        "weakest_vs_peer": weakest,
+        "abnormal_peer_gaps": [r for r in rows_with_gap if str(r.get("gap_tier") or "").startswith("异常")][:8],
+        "highest_song_rating": rows_by_rating[:8],
+        "b50_floor": sorted(rows, key=lambda r: safe_int(r.get("song_rating"), 0))[:8],
+        "theory_cards": [r for r in rows_by_rating if r.get("is_theory")][:8],
+        "impossible_15_theory": [r for r in rows_by_rating if safe_float(r.get("ds")) >= 15.0 and r.get("is_theory")][:4],
+        "high_ds_ap": [r for r in rows_by_rating if r.get("is_ap") and safe_float(r.get("ds")) >= 14.0][:8],
+        "level_14_plus_ap": [r for r in rows_by_rating if r.get("is_ap") and safe_float(r.get("ds")) >= 14.6][:6],
+        "low_pc_high_value": [
+            r for r in rows_by_rating
+            if safe_int(r.get("pc"), 0) > 0 and safe_int(r.get("pc"), 0) <= 5 and safe_float(r.get("achievement")) >= 100.5
+        ][:6],
+        "mid_ds_high_gap": [
+            r for r in rows_by_rating
+            if 13.0 <= safe_float(r.get("ds")) < 14.6 and safe_float(r.get("gap_vs_peer")) >= 0.25
+        ][:8],
+        "peer_table_all_b50": sorted(rows, key=lambda r: (str(r.get("bucket") or ""), safe_int(r.get("rank"), 0))),
+    }
 
 
 def section_stats(songs: list[dict], label: str) -> dict:
@@ -292,6 +494,7 @@ def build_context(b50: dict, tone: str, angle: str, peer_stats: dict | None) -> 
     impression_keywords = {str(s.get("music_id")): s.get("config_tags", []) for s in songs if s.get("music_id")}
     b35_stats = section_stats(sd, "B35")
     b15_stats = section_stats(dx, "B15")
+    evidence_pack = build_b50_evidence_pack(songs, rating, peer)
     context = {
         "player": {
             "nickname": b50.get("nickname"),
@@ -335,13 +538,16 @@ def build_context(b50: dict, tone: str, angle: str, peer_stats: dict | None) -> 
             "config_specialized": find_config_specialized(songs),
             "least_played": find_least_played(songs),
             "push_candidates": find_push_candidates(songs),
+            "same_rating_average_entry_points": evidence_pack.get("same_rating_average_entry_points", []),
         },
+        "b50_evidence_pack": evidence_pack,
         "impression_keywords": impression_keywords,
         "b50_songs": [compact_song(s) for s in songs],
         "writing_instructions": [
             "先回应用户指定语气和分析角度。",
             "只引用 b50_songs 或 push_candidates 中存在的曲名。",
-            "peer_stats_available=false 时不要写 ARPI、gap 或重合度结论。",
+            "peer_stats_available=true 且 peer_stats.matched>0 时，必须自然提到 ARPI，并至少用 2-3 张谱的 avg_achievement/gap_vs_peer 做判断。",
+            "peer_stats_available=false 时不要写 ARPI、avg_achievement、gap 或重合度结论。",
             "不要报告 AP/FC 总数；只可点名具体谱面的 AP/FC。",
             "结尾给具体推分路线。",
         ],

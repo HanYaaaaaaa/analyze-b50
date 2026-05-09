@@ -1,4 +1,4 @@
 interface:
   display_name: "分析 B50"
   short_description: "从水鱼 B50 数据生成舞萌 DX 锐评文本和分析图。"
-  default_prompt: "分析一个舞萌 DX B50 并一路做到完成：如果缺信息，先问 QQ 号、语气和分析角度；拿到后拉取水鱼 B50，准备 context，按 OneCat/指定口播风格写单段锐评，保存 tmp/analysis.txt，并生成原插件风格的 tmp/analysis.png，最后返回标题、文本和图片。"
+  default_prompt: "分析一个舞萌 DX B50 并一路做到完成：如果缺信息，先问 QQ 号、语气和分析角度；拿到后拉取水鱼 B50，准备 context，按 OneCat/指定口播风格写单段锐评。若有同段统计，必须自然提 ARPI，并用 avg_achievement / gap_vs_peer 做切入。保存 tmp/analysis.txt，并生成原插件风格的 tmp/analysis.png，最后返回标题、文本和图片。"
