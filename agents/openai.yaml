@@ -1,0 +1,4 @@
+interface:
+  display_name: "Analyze B50"
+  short_description: "Run a maimai DX B50 roast from Diving-Fish data through text and image output."
+  default_prompt: "分析一个舞萌 DX B50 并一路做到完成：如果缺信息，先问 QQ 号、语气和分析角度；拿到后拉取水鱼 B50，准备 context，按 OneCat/指定口播风格写单段锐评，保存 tmp/analysis.txt，并生成原插件风格的 tmp/analysis.png，最后返回标题、文本和图片。"

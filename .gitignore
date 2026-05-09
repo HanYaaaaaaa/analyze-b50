@@ -1,0 +1,4 @@
+tmp/
+scripts/__pycache__/
+assets/cache/covers/
+/*.zip

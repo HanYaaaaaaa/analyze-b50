@@ -1,0 +1,17 @@
+{
+  "version": "sample",
+  "rating_bucket_size": 200,
+  "buckets": {
+    "16000-16199": {
+      "charts": {
+        "834:4": {
+          "sample_count": 128,
+          "avg_achievement": 99.8421,
+          "p50_achievement": 99.91,
+          "avg_ra": 331,
+          "b50_appear_rate": 0.37
+        }
+      }
+    }
+  }
+}
