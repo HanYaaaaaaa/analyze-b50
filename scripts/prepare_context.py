@@ -183,7 +183,7 @@ def compact_song(song: dict) -> dict:
 def fine_rating_segment(rating: int) -> dict:
     if rating >= 16500:
         return {
-            "label": "16500+ 顶级门槛段",
+            "label": "16500+ 理论高分段",
             "range": "16500+",
             "tone": "按顶段尺度评价，不要按普通 w6 轻描淡写。",
         }

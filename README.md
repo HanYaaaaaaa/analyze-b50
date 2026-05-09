@@ -16,7 +16,7 @@
 在 Codex 或 Claude Code 里可以直接说：
 
 ```text
-帮我安装 https://github.com/HanYaaaaaaa/analyze-b50 这个 skill，然后分析 b50
+帮我安装 https://github.com/HanYaaaaaaa/analyze-b50 这个 skill，将http://t23.sjcmc.cn:34274/assets.zip下载并解压到skill的根目录
 ```
 
 随后按提示提供：
